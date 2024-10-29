@@ -177,6 +177,7 @@ class BiEncoderModel(LightningIRModel):
             expansion=self.config.query_expansion,
             pooling_strategy=self.config.query_pooling_strategy,
             mask_scoring_input_ids=self.query_mask_scoring_input_ids,
+            num_subvectors=self.config.query_num_subvectors
         )
 
     def encode_doc(self, encoding: BatchEncoding) -> BiEncoderEmbedding:
@@ -185,6 +186,7 @@ class BiEncoderModel(LightningIRModel):
             expansion=self.config.doc_expansion,
             pooling_strategy=self.config.doc_pooling_strategy,
             mask_scoring_input_ids=self.doc_mask_scoring_input_ids,
+            num_subvectors=self.config.doc_num_subvectors
         )
 
     @_batch_encoding
@@ -194,12 +196,15 @@ class BiEncoderModel(LightningIRModel):
         expansion: bool = False,
         pooling_strategy: Literal["first", "mean", "max", "sum"] | None = None,
         mask_scoring_input_ids: torch.Tensor | None = None,
+        num_subvectors: int | None = None
     ) -> BiEncoderEmbedding:
         embeddings = self._backbone_forward(**encoding).last_hidden_state
         if self.projection is not None:
             embeddings = self.projection(embeddings)
         embeddings = self._sparsification(embeddings, self.config.sparsification)
         embeddings = self._pooling(embeddings, encoding["attention_mask"], pooling_strategy)
+        if num_subvectors is not None:
+            embeddings = embeddings.view(embeddings.shape[0], num_subvectors * embeddings.shape[1], -1)
         if self.config.normalize:
             embeddings = torch.nn.functional.normalize(embeddings, dim=-1)
         scoring_mask = self._scoring_mask(
@@ -208,6 +213,7 @@ class BiEncoderModel(LightningIRModel):
             expansion,
             pooling_strategy,
             mask_scoring_input_ids,
+            num_subvectors
         )
         return BiEncoderEmbedding(embeddings, scoring_mask)
 
@@ -218,6 +224,7 @@ class BiEncoderModel(LightningIRModel):
             expansion=self.config.query_expansion,
             pooling_strategy=self.config.query_pooling_strategy,
             mask_scoring_input_ids=self.config.query_mask_scoring_input_ids,
+            num_subvectors=self.config.query_num_subvectors
         )
 
     def doc_scoring_mask(self, input_ids: torch.Tensor | None, attention_mask: torch.Tensor | None) -> torch.Tensor:
@@ -227,6 +234,7 @@ class BiEncoderModel(LightningIRModel):
             expansion=self.config.query_expansion,
             pooling_strategy=self.config.doc_pooling_strategy,
             mask_scoring_input_ids=self.config.doc_mask_scoring_input_ids,
+            num_subvectors=self.config.doc_num_subvectors
         )
 
     def _scoring_mask(
@@ -236,6 +244,7 @@ class BiEncoderModel(LightningIRModel):
         expansion: bool,
         pooling_strategy: Literal["first", "mean", "max", "sum"] | None = None,
         mask_scoring_input_ids: torch.Tensor | None = None,
+        num_subvectors: int | None = None,
     ) -> torch.Tensor:
         if input_ids is not None:
             shape = input_ids.shape
@@ -248,6 +257,8 @@ class BiEncoderModel(LightningIRModel):
         if pooling_strategy is not None:
             return torch.ones((shape[0], 1), dtype=torch.bool, device=device)
         scoring_mask = attention_mask
+        if num_subvectors is not None:
+            scoring_mask = torch.ones(1, num_subvectors * scoring_mask.shape[1])
         if expansion or scoring_mask is None:
             scoring_mask = torch.ones(shape, dtype=torch.bool, device=device)
         scoring_mask = scoring_mask.bool()
