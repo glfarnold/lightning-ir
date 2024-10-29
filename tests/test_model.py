@@ -2,9 +2,11 @@ from pathlib import Path
 from typing import Sequence
 
 import pytest
+import torch
 from transformers import AutoModel
 
 from lightning_ir.base import LightningIRModel, LightningIRModule
+from lightning_ir.bi_encoder import BiEncoderConfig, BiEncoderModule
 from lightning_ir.cross_encoder import CrossEncoderModule
 from lightning_ir.data import LightningIRDataModule, RunDataset, TupleDataset
 from lightning_ir.loss.loss import InBatchLossFunction
@@ -84,3 +86,29 @@ def test_seralize_deserialize(module: LightningIRModule, tmp_path: Path):
             assert getattr(new_model.config, key) == value
         for key, value in model.state_dict().items():
             assert new_model.state_dict()[key].equal(value)
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        BiEncoderConfig(
+            query_num_subvectors=6, doc_num_subvectors=6, query_pooling_strategy=None, doc_pooling_strategy=None
+        ),
+        BiEncoderConfig(query_num_subvectors=6, doc_num_subvectors=1),
+        BiEncoderConfig(),
+    ],
+)
+def test_num_subvectors(config):
+    model_name = "bert-base-uncased"
+    model = BiEncoderModule(model_name, config=config).eval()
+
+    query = "What is the capital of France"
+    docs = ["The Capital of France is Paris", "Marseille is the capital of France"]
+
+    with torch.inference_mode():
+        output = model.score(query, docs)
+
+    print("Similarity scores:")
+    print(output.scores.numpy().round(2))
+    print("Query embeddings shape:", output.query_embeddings.embeddings.shape)
+    print("Docs embeddings shape:", output.doc_embeddings.embeddings.shape)

@@ -55,11 +55,9 @@ class BiEncoderConfig(LightningIRConfig):
         normalize: bool = False,
         sparsification: Literal["relu", "relu_log"] | None = None,
         add_marker_tokens: bool = False,
-        query_num_subvectors: int | None = None,
-        query_embedding_dim: int | None = 768,
-        doc_num_subvectors: int | None = None,        
-        doc_embedding_dim: int | None = 768,
-        embedding_dim: int | None = 768,
+        embedding_dim: int = 768,
+        query_num_subvectors: int = 1,
+        doc_num_subvectors: int = 1,
         projection: Literal["linear", "linear_no_bias", "mlm"] | None = "linear",
         **kwargs,
     ):
@@ -113,9 +111,7 @@ class BiEncoderConfig(LightningIRConfig):
         self.normalize = normalize
         self.sparsification = sparsification
         self.add_marker_tokens = add_marker_tokens
-        self.query_embedding_dim = query_embedding_dim
         self.query_num_subvectors = query_num_subvectors
-        self.doc_embedding_dim = doc_embedding_dim
         self.doc_num_subvectors = doc_num_subvectors
         self.embedding_dim = embedding_dim
         self.projection = projection

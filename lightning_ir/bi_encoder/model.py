@@ -88,9 +88,14 @@ class BiEncoderModel(LightningIRModel):
         self.projection: torch.nn.Linear | MLMHead | None = None
         if self.config.projection is not None:
             if "linear" in self.config.projection:
-                self.projection = torch.nn.Linear(
+                self.query_projection = torch.nn.Linear(
                     self.config.hidden_size,
-                    self.config.embedding_dim,
+                    self.config.embedding_dim * self.config.query_num_subvectors,
+                    bias="no_bias" not in self.config.projection,
+                )
+                self.doc_projection = torch.nn.Linear(
+                    self.config.hidden_size,
+                    self.config.embedding_dim * self.config.doc_num_subvectors,
                     bias="no_bias" not in self.config.projection,
                 )
             elif self.config.projection == "mlm":
@@ -171,79 +176,42 @@ class BiEncoderModel(LightningIRModel):
         return BiEncoderOutput(scores=scores, query_embeddings=query_embeddings, doc_embeddings=doc_embeddings)
 
     def encode_query(self, encoding: BatchEncoding) -> BiEncoderEmbedding:
-        return self._encode(
-            encoding,
-            expansion=self.config.query_expansion,
-            pooling_strategy=self.config.query_pooling_strategy,
-            mask_scoring_input_ids=self.query_mask_scoring_input_ids,
-            num_subvectors=self.config.query_num_subvectors
-        )
+        return self._encode(encoding, "query")
 
     def encode_doc(self, encoding: BatchEncoding) -> BiEncoderEmbedding:
-        return self._encode(
-            encoding,
-            expansion=self.config.doc_expansion,
-            pooling_strategy=self.config.doc_pooling_strategy,
-            mask_scoring_input_ids=self.doc_mask_scoring_input_ids,
-            num_subvectors=self.config.doc_num_subvectors
-        )
+        return self._encode(encoding, "doc")
 
     @_batch_encoding
-    def _encode(
-        self,
-        encoding: BatchEncoding,
-        expansion: bool = False,
-        pooling_strategy: Literal["first", "mean", "max", "sum"] | None = None,
-        mask_scoring_input_ids: torch.Tensor | None = None,
-        num_subvectors: int | None = None
-    ) -> BiEncoderEmbedding:
+    def _encode(self, encoding: BatchEncoding, sequence_type: Literal["query", "doc"]) -> BiEncoderEmbedding:
         embeddings = self._backbone_forward(**encoding).last_hidden_state
-        if self.projection is not None:
-            embeddings = self.projection(embeddings)
+        projection = getattr(self, f"{sequence_type}_projection")
+        if projection is not None:
+            embeddings = projection(embeddings)
         embeddings = self._sparsification(embeddings, self.config.sparsification)
-        embeddings = self._pooling(embeddings, encoding["attention_mask"], pooling_strategy)
-        if num_subvectors is not None:
-            embeddings = embeddings.view(embeddings.shape[0], num_subvectors * embeddings.shape[1], -1)
+        embeddings = self._pooling(
+            embeddings, encoding["attention_mask"], getattr(self.config, f"{sequence_type}_pooling_strategy")
+        )
+        embeddings = embeddings.view(
+            embeddings.shape[0],
+            getattr(self.config, f"{sequence_type}_num_subvectors") * embeddings.shape[1],
+            self.config.embedding_dim,
+        )
         if self.config.normalize:
             embeddings = torch.nn.functional.normalize(embeddings, dim=-1)
-        scoring_mask = self._scoring_mask(
-            encoding["input_ids"],
-            encoding["attention_mask"],
-            expansion,
-            pooling_strategy,
-            mask_scoring_input_ids,
-            num_subvectors
-        )
+        scoring_mask = self._scoring_mask(encoding["input_ids"], encoding["attention_mask"], sequence_type)
         return BiEncoderEmbedding(embeddings, scoring_mask)
 
     def query_scoring_mask(self, input_ids: torch.Tensor | None, attention_mask: torch.Tensor | None) -> torch.Tensor:
-        return self._scoring_mask(
-            input_ids,
-            attention_mask,
-            expansion=self.config.query_expansion,
-            pooling_strategy=self.config.query_pooling_strategy,
-            mask_scoring_input_ids=self.config.query_mask_scoring_input_ids,
-            num_subvectors=self.config.query_num_subvectors
-        )
+        return self._scoring_mask(input_ids, attention_mask, "query")
 
     def doc_scoring_mask(self, input_ids: torch.Tensor | None, attention_mask: torch.Tensor | None) -> torch.Tensor:
-        return self._scoring_mask(
-            input_ids,
-            attention_mask,
-            expansion=self.config.query_expansion,
-            pooling_strategy=self.config.doc_pooling_strategy,
-            mask_scoring_input_ids=self.config.doc_mask_scoring_input_ids,
-            num_subvectors=self.config.doc_num_subvectors
-        )
+        return self._scoring_mask(input_ids, attention_mask, "doc")
 
     def _scoring_mask(
         self,
         input_ids: torch.Tensor | None,
         attention_mask: torch.Tensor | None,
-        expansion: bool,
-        pooling_strategy: Literal["first", "mean", "max", "sum"] | None = None,
-        mask_scoring_input_ids: torch.Tensor | None = None,
-        num_subvectors: int | None = None,
+        sequence_type: Literal["query", "doc"],
     ) -> torch.Tensor:
         if input_ids is not None:
             shape = input_ids.shape
@@ -253,17 +221,19 @@ class BiEncoderModel(LightningIRModel):
             device = attention_mask.device
         else:
             raise ValueError("Pass either input_ids or attention_mask")
-        if pooling_strategy is not None:
+        if getattr(self.config, f"{sequence_type}_pooling_strategy") is not None:
             return torch.ones((shape[0], 1), dtype=torch.bool, device=device)
         scoring_mask = attention_mask
-        if num_subvectors is not None:
-            scoring_mask = torch.ones(1, num_subvectors * scoring_mask.shape[1])
-        if expansion or scoring_mask is None:
+        num_subvectors = getattr(self.config, f"{sequence_type}_num_subvectors")
+        if getattr(self.config, f"{sequence_type}_expansion") or scoring_mask is None:
             scoring_mask = torch.ones(shape, dtype=torch.bool, device=device)
         scoring_mask = scoring_mask.bool()
+        mask_scoring_input_ids = getattr(self, f"{sequence_type}_mask_scoring_input_ids")
         if mask_scoring_input_ids is not None and input_ids is not None:
             ignore_mask = input_ids[..., None].eq(mask_scoring_input_ids.to(device)).any(-1)
             scoring_mask = scoring_mask & ~ignore_mask
+        if num_subvectors is not None:
+            scoring_mask = scoring_mask.repeat_interleave(num_subvectors, dim=1)
         return scoring_mask
 
     def score(
