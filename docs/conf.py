@@ -34,6 +34,10 @@ extensions = [
 
 # autodoc_mock_imports = ['torch', 'transformers', 'lightning']
 
+doctest_global_setup = """
+from argparse import Namespace
+"""
+
 
 todo_include_todos = True
 python_display_short_literal_types = True
@@ -97,4 +101,8 @@ autodoc_inherit_docstrings = False
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-# html_static_path = ['_static']
+html_static_path = ["_static"]
+
+html_css_files = [
+    "css/custom.css",
+]

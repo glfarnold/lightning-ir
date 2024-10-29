@@ -15,7 +15,6 @@ DATA_DIR = Path(__file__).parent / "data"
 
 def tuples_datamodule(module: LightningIRModule, inference_datasets: Sequence[RunDataset]) -> LightningIRDataModule:
     datamodule = LightningIRDataModule(
-        module=module,
         num_workers=0,
         train_batch_size=3,
         inference_batch_size=2,
@@ -79,6 +78,7 @@ def test_seralize_deserialize(module: LightningIRModule, tmp_path: Path):
                 "_commit_hash",
                 "transformers_version",
                 "model_type",
+                "_attn_implementation_autoset",
             ):
                 continue
             assert getattr(new_model.config, key) == value

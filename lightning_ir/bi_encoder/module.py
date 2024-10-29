@@ -42,9 +42,12 @@ class BiEncoderModule(LightningIRModule):
     def searcher(self, searcher: Searcher):
         self._searcher = searcher
 
-    def on_test_start(self) -> None:
+    def _init_searcher(self) -> None:
         if self.search_config is not None and self.index_dir is not None:
             self.searcher = self.search_config.search_class(self.index_dir, self.search_config, self)
+
+    def on_test_start(self) -> None:
+        self._init_searcher()
         return super().on_test_start()
 
     def forward(self, batch: RankBatch | IndexBatch | SearchBatch) -> BiEncoderOutput:
@@ -72,10 +75,9 @@ class BiEncoderModule(LightningIRModule):
     def score(self, queries: Sequence[str] | str, docs: Sequence[Sequence[str]] | Sequence[str]) -> BiEncoderOutput:
         return super().score(queries, docs)
 
-    def compute_losses(self, batch: TrainBatch) -> List[torch.Tensor]:
+    def compute_losses(self, batch: TrainBatch, output: BiEncoderOutput) -> List[torch.Tensor]:
         if self.loss_functions is None:
             raise ValueError("Loss function is not set")
-        output = self.forward(batch)
 
         scores = output.scores
         query_embeddings = output.query_embeddings
@@ -97,7 +99,7 @@ class BiEncoderModule(LightningIRModule):
                 ib_scores = ib_scores.view(num_queries, -1)
                 losses.append(loss_function.compute_loss(ib_scores))
             elif isinstance(loss_function, EmbeddingLossFunction):
-                losses.append(loss_function.compute_loss(query_embeddings.embeddings, doc_embeddings.embeddings))
+                losses.append(loss_function.compute_loss(query_embeddings, doc_embeddings))
             elif isinstance(loss_function, ScoringLossFunction):
                 losses.append(loss_function.compute_loss(scores, targets))
             else:

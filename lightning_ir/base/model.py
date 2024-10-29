@@ -63,6 +63,11 @@ https://huggingface.co/transformers/main_classes/model.html#transformers.PreTrai
                         module.forward = partial(flash_attn_forward, module)
 
     def _backbone_forward(self, *args, **kwargs):
+        """Runs the forward method of the backbone model. Is overridden in
+        :class:`~lightning_ir.base.class_factory.LightningIRModelClassFactory`.
+
+        :raises NotImplementedError: If not overridden in the derived class
+        """
         raise NotImplementedError
 
     def forward(self, *args, **kwargs) -> LightningIROutput:
@@ -78,7 +83,7 @@ https://huggingface.co/transformers/main_classes/model.html#transformers.PreTrai
         :type embeddings: torch.Tensor
         :param sparsification_strategy: The sparsification strategy. No sparsification is applied if None,
         defaults to None
-        :type sparsification_strategy: Literal[&quot;relu&quot;, &quot;relu_log&quot;] | None, optional
+        :type sparsification_strategy: Literal['relu', 'relu_log'] | None, optional
         :raises ValueError: If an unknown sparsification strategy is passed
         :return: (Optionally) sparsified embeddings
         :rtype: torch.Tensor
@@ -104,7 +109,7 @@ https://huggingface.co/transformers/main_classes/model.html#transformers.PreTrai
         :param attention_mask: Query or document attention mask
         :type attention_mask: torch.Tensor | None
         :param pooling_strategy: The pooling strategy. No pooling is applied if None.
-        :type pooling_strategy: Literal[&quot;first&quot;, &quot;mean&quot;, &quot;max&quot;, &quot;sum&quot;] | None
+        :type pooling_strategy: Literal['first', 'mean', 'max', 'sum'] | None
         :raises ValueError: If an unknown pooling strategy is passed
         :return: (Optionally) pooled embeddings
         :rtype: torch.Tensor
@@ -174,14 +179,13 @@ https://huggingface.co/transformers/main_classes/model.html#transformers.PreTrai
         config = kwargs.get("config", None)
         if cls is LightningIRModel or all(issubclass(base, LightningIRModel) for base in cls.__bases__):
             # no backbone models found, create derived lightning-ir model based on backbone model
-            if model_name_or_path in CHECKPOINT_MAPPING:
+            if config is not None:
+                config_class = config.__class__
+            elif model_name_or_path in CHECKPOINT_MAPPING:
                 _config = CHECKPOINT_MAPPING[model_name_or_path]
                 config_class = _config.__class__
-                if config is not None:
-                    warnings.warn(f"{model_name_or_path} is a registered checkpoint. The provided config is ignored.")
-                config = _config
-            elif config is not None:
-                config_class = config.__class__
+                if config is None:
+                    config = _config
             elif cls is not LightningIRModel:
                 config_class = cls.config_class
             else:
