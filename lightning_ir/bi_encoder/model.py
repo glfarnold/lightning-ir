@@ -221,10 +221,10 @@ class BiEncoderModel(LightningIRModel):
             device = attention_mask.device
         else:
             raise ValueError("Pass either input_ids or attention_mask")
-        if getattr(self.config, f"{sequence_type}_pooling_strategy") is not None:
-            return torch.ones((shape[0], 1), dtype=torch.bool, device=device)
-        scoring_mask = attention_mask
         num_subvectors = getattr(self.config, f"{sequence_type}_num_subvectors")
+        if getattr(self.config, f"{sequence_type}_pooling_strategy") is not None:
+            return torch.ones((shape[0], num_subvectors), dtype=torch.bool, device=device)
+        scoring_mask = attention_mask
         if getattr(self.config, f"{sequence_type}_expansion") or scoring_mask is None:
             scoring_mask = torch.ones(shape, dtype=torch.bool, device=device)
         scoring_mask = scoring_mask.bool()
