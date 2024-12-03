@@ -18,6 +18,7 @@ class BiEncoderConfig(LightningIRConfig):
             "doc_expansion",
             "attend_to_doc_expanded_tokens",
             "add_marker_tokens",
+            "num_expansion_tokens",
         }
     )
 
@@ -58,6 +59,7 @@ class BiEncoderConfig(LightningIRConfig):
         embedding_dim: int = 768,
         query_num_subvectors: int = 1,
         doc_num_subvectors: int = 1,
+        num_expansion_tokens: int | None = 8,
         projection: Literal["linear", "linear_no_bias", "mlm"] | None = "linear",
         **kwargs,
     ):
@@ -113,6 +115,7 @@ class BiEncoderConfig(LightningIRConfig):
         self.add_marker_tokens = add_marker_tokens
         self.query_num_subvectors = query_num_subvectors
         self.doc_num_subvectors = doc_num_subvectors
+        self.num_expansion_tokens = num_expansion_tokens
         self.embedding_dim = embedding_dim
         self.projection = projection
 
