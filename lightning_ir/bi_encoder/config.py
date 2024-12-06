@@ -46,12 +46,12 @@ class BiEncoderConfig(LightningIRConfig):
         similarity_function: Literal["cosine", "dot"] = "dot",
         query_expansion: bool = False,
         attend_to_query_expanded_tokens: bool = False,
-        query_pooling_strategy: Literal["first", "mean", "max", "sum"] | None = "mean",
+        query_pooling_strategy: Literal["first", "mean", "max", "sum", "first_n"] | None = "mean",
         query_mask_scoring_tokens: Sequence[str] | Literal["punctuation"] | None = None,
         query_aggregation_function: Literal["sum", "mean", "max", "harmonic_mean"] = "sum",
         doc_expansion: bool = False,
         attend_to_doc_expanded_tokens: bool = False,
-        doc_pooling_strategy: Literal["first", "mean", "max", "sum"] | None = "mean",
+        doc_pooling_strategy: Literal["first", "mean", "max", "sum", "first_n"] | None = "mean",
         doc_mask_scoring_tokens: Sequence[str] | Literal["punctuation"] | None = None,
         normalize: bool = False,
         sparsification: Literal["relu", "relu_log"] | None = None,
@@ -74,7 +74,7 @@ class BiEncoderConfig(LightningIRConfig):
             defaults to False
         :type attend_to_query_expanded_tokens: bool, optional
         :param query_pooling_strategy: Whether and how to pool the query token embeddings, defaults to "mean"
-        :type query_pooling_strategy: Literal['first', 'mean', 'max', 'sum'] | None, optional
+        :type query_pooling_strategy: Literal['first', 'mean', 'max', 'sum', 'first_n'] | None, optional
         :param query_mask_scoring_tokens: Whether and which query tokens to ignore during scoring, defaults to None
         :type query_mask_scoring_tokens: Sequence[str] | Literal['punctuation'] | None, optional
         :param query_aggregation_function: How to aggregate similarity scores over query tokens, defaults to "sum"
@@ -85,7 +85,7 @@ class BiEncoderConfig(LightningIRConfig):
             defaults to False
         :type attend_to_doc_expanded_tokens: bool, optional
         :param doc_pooling_strategy: Whether andhow to pool document token embeddings, defaults to "mean"
-        :type doc_pooling_strategy: Literal['first', 'mean', 'max', 'sum'] | None, optional
+        :type doc_pooling_strategy: Literal['first', 'mean', 'max', 'sum', 'first_n'] | None, optional
         :param doc_mask_scoring_tokens: Whether and which document tokens to ignore during scoring, defaults to None
         :type doc_mask_scoring_tokens: Sequence[str] | Literal['punctuation'] | None, optional
         :param normalize: Whether to normalize query and document embeddings, defaults to False
