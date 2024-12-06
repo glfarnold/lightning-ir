@@ -58,33 +58,39 @@ class BiEncoderTokenizer(LightningIRTokenizer):
             # TODO support other tokenizers
             if not isinstance(self, (BertTokenizer, BertTokenizerFast)):
                 raise ValueError("Adding marker tokens is only supported for BertTokenizer.")
-            query_expansion_tokens = " ".join(f"[QEXP{idx}]" for idx in range(self.num_expansion_tokens))
-            query_expansion_token_ids = [(query_expansion_tokens, self.query_expansion_token_id(idx)) for idx in range(self.num_expansion_tokens)]
-            doc_expansion_tokens = " ".join(f"[DEXP{idx}]" for idx in range(self.num_expansion_tokens))
-            doc_expansion_token_ids = [(doc_expansion_tokens, self.doc_expansion_token_id(idx)) for idx in range(self.num_expansion_tokens)]
-            self.add_tokens(query_expansion_tokens, special_tokens=True)
-            self.add_tokens(doc_expansion_tokens, special_tokens=True)
+            
             self.add_tokens([query_token, doc_token], special_tokens=True)
+
+        if num_expansion_tokens is not None:    
+            query_expansion_tokens = [f"[QEXP{idx}]" for idx in range(num_expansion_tokens)]
+            self.add_tokens(query_expansion_tokens, special_tokens=True)
+            query_expansion_token_ids = [(query_expansion_tokens[idx], self.query_expansion_token_id(idx)) for idx in range(self.num_expansion_tokens)]
+            doc_expansion_tokens = [f"[DEXP{idx}]" for idx in range(num_expansion_tokens)]
+            self.add_tokens(doc_expansion_tokens, special_tokens=True)
+            doc_expansion_token_ids = [(doc_expansion_tokens[idx], self.doc_expansion_token_id(idx)) for idx in range(self.num_expansion_tokens)]
+
             self.query_post_processor = TemplateProcessing(
-                single=f"[CLS] {query_expansion_tokens} {self.query_token} $0 [SEP]",
-                pair=f"[CLS] {query_expansion_tokens} {self.query_token} $A [SEP] {doc_expansion_tokens} {self.doc_token} $B:1 [SEP]:1",
+                single=f"[CLS] {' '.join(query_expansion_tokens)} {self.query_token} $0 [SEP]",
+                pair=f"[CLS] {' '.join(query_expansion_tokens)} {self.query_token} $A [SEP] {' '.join(doc_expansion_tokens)} {self.doc_token} $B:1 [SEP]:1",
                 special_tokens=[
                     ("[CLS]", self.cls_token_id),
                     ("[SEP]", self.sep_token_id),
                     (self.query_token, self.query_token_id),
                     (self.doc_token, self.doc_token_id),
-                    *query_expansion_token_ids
+                    *query_expansion_token_ids,
+                    *doc_expansion_token_ids
                 ],
             )
             self.doc_post_processor = TemplateProcessing(
-                single=f"[CLS] {doc_expansion_tokens} {self.doc_token} $0 [SEP]",
-                pair=f"[CLS] {query_expansion_tokens} {self.query_token} $A [SEP] {doc_expansion_tokens} {self.doc_token} $B:1 [SEP]:1",
+                single=f"[CLS] {' '.join(doc_expansion_tokens)} {self.doc_token} $0 [SEP]",
+                pair=f"[CLS] {' '.join(query_expansion_tokens)} {self.query_token} $A [SEP] {' '.join(doc_expansion_tokens)} {self.doc_token} $B:1 [SEP]:1",
                 special_tokens=[
                     ("[CLS]", self.cls_token_id),
                     ("[SEP]", self.sep_token_id),
                     (self.query_token, self.query_token_id),
                     (self.doc_token, self.doc_token_id),
-                    *doc_expansion_token_ids
+                    *doc_expansion_token_ids,
+                    *query_expansion_token_ids
                 ],
             )
 
