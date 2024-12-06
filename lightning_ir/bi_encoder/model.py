@@ -8,6 +8,8 @@ import torch
 from transformers import BatchEncoding
 from transformers.activations import ACT2FN
 
+import numpy as np
+
 from ..base import LightningIRModel, LightningIROutput
 from ..base.model import _batch_encoding
 from . import BiEncoderConfig
@@ -90,12 +92,12 @@ class BiEncoderModel(LightningIRModel):
             if "linear" in self.config.projection:
                 self.query_projection = torch.nn.Linear(
                     self.config.hidden_size,
-                    self.config.embedding_dim * self.config.query_num_subvectors,
+                    self.config.embedding_dim * np.abs(self.config.query_num_subvectors),
                     bias="no_bias" not in self.config.projection,
                 )
                 self.doc_projection = torch.nn.Linear(
                     self.config.hidden_size,
-                    self.config.embedding_dim * self.config.doc_num_subvectors,
+                    self.config.embedding_dim * np.abs(self.config.doc_num_subvectors),
                     bias="no_bias" not in self.config.projection,
                 )
             elif self.config.projection == "mlm":
@@ -191,11 +193,19 @@ class BiEncoderModel(LightningIRModel):
         embeddings = self._pooling(
             embeddings, encoding["attention_mask"], getattr(self.config, f"{sequence_type}_pooling_strategy")
         )
-        embeddings = embeddings.view(
-            embeddings.shape[0],
-            getattr(self.config, f"{sequence_type}_num_subvectors") * embeddings.shape[1],
-            self.config.embedding_dim,
-        )
+        num_subvectors = getattr(self.config,f"{sequence_type}_num_subvectors")
+        if num_subvectors > 0:
+            embeddings = embeddings.view(
+                embeddings.shape[0],
+                num_subvectors * embeddings.shape[1],
+                self.config.embedding_dim,
+            )
+        else:
+            embeddings = embeddings.view(
+                embeddings.shape[0],
+                np.abs(num_subvectors),
+                -1
+            )
         if self.config.normalize:
             embeddings = torch.nn.functional.normalize(embeddings, dim=-1)
         scoring_mask = self._scoring_mask(encoding["input_ids"], encoding["attention_mask"], sequence_type)
@@ -223,7 +233,13 @@ class BiEncoderModel(LightningIRModel):
             raise ValueError("Pass either input_ids or attention_mask")
         num_subvectors = getattr(self.config, f"{sequence_type}_num_subvectors")
         if getattr(self.config, f"{sequence_type}_pooling_strategy") is not None:
-            return torch.ones((shape[0], num_subvectors), dtype=torch.bool, device=device)
+            if num_subvectors > 0:
+                 if self.config.num_expansion_tokens is None:
+                    return torch.ones((shape[0], num_subvectors), dtype=torch.bool, device=device)
+                 else:
+                     return torch.ones((shape[0], num_subvectors*(self.config.num_expansion_tokens+1)), dtype=torch.bool, device=device)
+            else:
+                return torch.ones((shape[0], np.abs(num_subvectors)), dtype=torch.bool, device=device)
         scoring_mask = attention_mask
         if getattr(self.config, f"{sequence_type}_expansion") or scoring_mask is None:
             scoring_mask = torch.ones(shape, dtype=torch.bool, device=device)
@@ -233,7 +249,8 @@ class BiEncoderModel(LightningIRModel):
             ignore_mask = input_ids[..., None].eq(mask_scoring_input_ids.to(device)).any(-1)
             scoring_mask = scoring_mask & ~ignore_mask
         if num_subvectors is not None:
-            scoring_mask = scoring_mask.repeat_interleave(num_subvectors, dim=1)
+            if num_subvectors > 0:
+                scoring_mask = scoring_mask.repeat_interleave(num_subvectors, dim=1)
         return scoring_mask
 
     def score(
