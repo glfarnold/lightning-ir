@@ -90,14 +90,22 @@ class BiEncoderModel(LightningIRModel):
         self.projection: torch.nn.Linear | MLMHead | None = None
         if self.config.projection is not None:
             if "linear" in self.config.projection:
+                if self.config.query_num_subvectors > 0:
+                    query_embedding_dim = self.config.embedding_dim * self.config.query_num_subvectors
+                else:
+                    query_embedding_dim = self.config.embedding_dim // self.config.num_expansion_tokens
+                if self.config.doc_num_subvectors > 0:
+                    doc_embedding_dim = self.config.embedding_dim * self.config.doc_num_subvectors
+                else:
+                    doc_embedding_dim = self.config.embedding_dim // self.config.num_expansion_tokens
                 self.query_projection = torch.nn.Linear(
                     self.config.hidden_size,
-                    self.config.embedding_dim * np.abs(self.config.query_num_subvectors),
+                    query_embedding_dim,
                     bias="no_bias" not in self.config.projection,
                 )
                 self.doc_projection = torch.nn.Linear(
                     self.config.hidden_size,
-                    self.config.embedding_dim * np.abs(self.config.doc_num_subvectors),
+                    doc_embedding_dim,
                     bias="no_bias" not in self.config.projection,
                 )
             elif self.config.projection == "mlm":
@@ -193,7 +201,7 @@ class BiEncoderModel(LightningIRModel):
         embeddings = self._pooling(
             embeddings, encoding["attention_mask"], getattr(self.config, f"{sequence_type}_pooling_strategy")
         )
-        num_subvectors = getattr(self.config,f"{sequence_type}_num_subvectors")
+        num_subvectors = getattr(self.config, f"{sequence_type}_num_subvectors")
         if num_subvectors > 0:
             embeddings = embeddings.view(
                 embeddings.shape[0],
@@ -203,13 +211,36 @@ class BiEncoderModel(LightningIRModel):
         else:
             embeddings = embeddings.view(
                 embeddings.shape[0],
-                np.abs(num_subvectors),
-                -1
+                abs(num_subvectors),
+                self.config.embedding_dim,
             )
         if self.config.normalize:
             embeddings = torch.nn.functional.normalize(embeddings, dim=-1)
         scoring_mask = self._scoring_mask(encoding["input_ids"], encoding["attention_mask"], sequence_type)
         return BiEncoderEmbedding(embeddings, scoring_mask)
+
+    def _pooling(
+        self,
+        embeddings: torch.Tensor,
+        attention_mask: torch.Tensor | None,
+        pooling_strategy: Literal["first", "mean", "max", "sum", "first_n"] | None,
+    ) -> torch.Tensor:
+        """Helper method to apply pooling to the embeddings.
+
+        :param embeddings: Query or document embeddings
+        :type embeddings: torch.Tensor
+        :param attention_mask: Query or document attention mask
+        :type attention_mask: torch.Tensor | None
+        :param pooling_strategy: The pooling strategy. No pooling is applied if None.
+        :type pooling_strategy: Literal['first', 'mean', 'max', 'sum', 'first_n'] | None
+        :raises ValueError: If an unknown pooling strategy is passed
+        :return: (Optionally) pooled embeddings
+        :rtype: torch.Tensor
+        """
+        if pooling_strategy == "first_n":
+            embeddings = embeddings[:, : self.config.num_expansion_tokens]
+            return embeddings
+        return super()._pooling(embeddings=embeddings, attention_mask=attention_mask, pooling_strategy=pooling_strategy)
 
     def query_scoring_mask(self, input_ids: torch.Tensor | None, attention_mask: torch.Tensor | None) -> torch.Tensor:
         return self._scoring_mask(input_ids, attention_mask, "query")
@@ -234,10 +265,12 @@ class BiEncoderModel(LightningIRModel):
         num_subvectors = getattr(self.config, f"{sequence_type}_num_subvectors")
         if getattr(self.config, f"{sequence_type}_pooling_strategy") is not None:
             if num_subvectors > 0:
-                 if self.config.num_expansion_tokens is None:
+                if self.config.num_expansion_tokens is None:
                     return torch.ones((shape[0], num_subvectors), dtype=torch.bool, device=device)
-                 else:
-                     return torch.ones((shape[0], num_subvectors*(self.config.num_expansion_tokens+1)), dtype=torch.bool, device=device)
+                else:
+                    return torch.ones(
+                        (shape[0], num_subvectors * (self.config.num_expansion_tokens)), dtype=torch.bool, device=device
+                    )
             else:
                 return torch.ones((shape[0], np.abs(num_subvectors)), dtype=torch.bool, device=device)
         scoring_mask = attention_mask

@@ -28,7 +28,9 @@ class BiEncoderModule(LightningIRModule):
         self.config: BiEncoderConfig
         self.tokenizer: BiEncoderTokenizer
         self.scoring_function = self.model.scoring_function
-        if (self.config.add_marker_tokens or self.config.num_expansion_tokens > 0) and len(self.tokenizer) > self.config.vocab_size:
+        if (self.config.add_marker_tokens or self.config.num_expansion_tokens > 0) and len(
+            self.tokenizer
+        ) > self.config.vocab_size:
             self.model.resize_token_embeddings(len(self.tokenizer), 8)
         self._searcher = None
         self.search_config = search_config

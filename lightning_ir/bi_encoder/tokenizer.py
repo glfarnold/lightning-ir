@@ -24,7 +24,7 @@ class BiEncoderTokenizer(LightningIRTokenizer):
         doc_length: int = 512,
         attend_to_doc_expanded_tokens: bool = False,
         add_marker_tokens: bool = True,
-        num_expansion_tokens: int = 8,
+        num_expansion_tokens: int = 4,
         **kwargs,
     ):
         super().__init__(
@@ -58,39 +58,32 @@ class BiEncoderTokenizer(LightningIRTokenizer):
             # TODO support other tokenizers
             if not isinstance(self, (BertTokenizer, BertTokenizerFast)):
                 raise ValueError("Adding marker tokens is only supported for BertTokenizer.")
-            
+
             self.add_tokens([query_token, doc_token], special_tokens=True)
 
-        if num_expansion_tokens is not None:    
-            query_expansion_tokens = [f"[QEXP{idx}]" for idx in range(num_expansion_tokens)]
-            self.add_tokens(query_expansion_tokens, special_tokens=True)
-            query_expansion_token_ids = [(query_expansion_tokens[idx], self.query_expansion_token_id(idx)) for idx in range(self.num_expansion_tokens)]
-            doc_expansion_tokens = [f"[DEXP{idx}]" for idx in range(num_expansion_tokens)]
-            self.add_tokens(doc_expansion_tokens, special_tokens=True)
-            doc_expansion_token_ids = [(doc_expansion_tokens[idx], self.doc_expansion_token_id(idx)) for idx in range(self.num_expansion_tokens)]
+        if num_expansion_tokens > 1:
+            expansion_tokens = [f"[EXP{idx}]" for idx in range(num_expansion_tokens)]
+            self.add_tokens(expansion_tokens, special_tokens=True)
+            expansion_token_ids = [
+                (expansion_tokens[idx], self.expansion_token_id(idx)) for idx in range(self.num_expansion_tokens)
+            ]
 
             self.query_post_processor = TemplateProcessing(
-                single=f"[CLS] {' '.join(query_expansion_tokens)} {self.query_token} $0 [SEP]",
-                pair=f"[CLS] {' '.join(query_expansion_tokens)} {self.query_token} $A [SEP] {' '.join(doc_expansion_tokens)} {self.doc_token} $B:1 [SEP]:1",
+                single=f"{' '.join(expansion_tokens)} $0 [SEP]",
+                pair=f"{' '.join(expansion_tokens)} $A [SEP] {' '.join(expansion_tokens)} $B:1 [SEP]:1",
                 special_tokens=[
                     ("[CLS]", self.cls_token_id),
                     ("[SEP]", self.sep_token_id),
-                    (self.query_token, self.query_token_id),
-                    (self.doc_token, self.doc_token_id),
-                    *query_expansion_token_ids,
-                    *doc_expansion_token_ids
+                    *expansion_token_ids,
                 ],
             )
             self.doc_post_processor = TemplateProcessing(
-                single=f"[CLS] {' '.join(doc_expansion_tokens)} {self.doc_token} $0 [SEP]",
-                pair=f"[CLS] {' '.join(query_expansion_tokens)} {self.query_token} $A [SEP] {' '.join(doc_expansion_tokens)} {self.doc_token} $B:1 [SEP]:1",
+                single=f"{' '.join(expansion_tokens)} $0 [SEP]",
+                pair=f"{' '.join(expansion_tokens)} $A [SEP] {' '.join(expansion_tokens)} $B:1 [SEP]:1",
                 special_tokens=[
                     ("[CLS]", self.cls_token_id),
                     ("[SEP]", self.sep_token_id),
-                    (self.query_token, self.query_token_id),
-                    (self.doc_token, self.doc_token_id),
-                    *doc_expansion_token_ids,
-                    *query_expansion_token_ids
+                    *expansion_token_ids,
                 ],
             )
 
@@ -105,17 +98,12 @@ class BiEncoderTokenizer(LightningIRTokenizer):
         if self.doc_token in self.added_tokens_encoder:
             return self.added_tokens_encoder[self.doc_token]
         return None
-    
-    def query_expansion_token_id(self, idx) -> int | None:
-        if f"[QEXP{idx}]" in self.added_tokens_encoder:
-            return self.added_tokens_encoder[f"[QEXP{idx}]"]
+
+    def expansion_token_id(self, idx) -> int | None:
+        if f"[EXP{idx}]" in self.added_tokens_encoder:
+            return self.added_tokens_encoder[f"[EXP{idx}]"]
         return None
 
-    def doc_expansion_token_id(self, idx) -> int | None:
-        if f"[DEXP{idx}]" in self.added_tokens_encoder:
-            return self.added_tokens_encoder[f"[DEXP{idx}]"]
-        return None
-    
     def __call__(self, *args, warn: bool = True, **kwargs) -> BatchEncoding:
         if warn:
             warnings.warn(

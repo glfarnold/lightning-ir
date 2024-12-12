@@ -59,7 +59,7 @@ class BiEncoderConfig(LightningIRConfig):
         embedding_dim: int = 768,
         query_num_subvectors: int = 1,
         doc_num_subvectors: int = 1,
-        num_expansion_tokens: int | None = 8,
+        num_expansion_tokens: int = 1,
         projection: Literal["linear", "linear_no_bias", "mlm"] | None = "linear",
         **kwargs,
     ):
