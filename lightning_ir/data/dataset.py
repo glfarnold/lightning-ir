@@ -268,6 +268,7 @@ class RunDataset(IRDataset, Dataset):
             usecols=[0, 2, 3, 4],
             dtype={"query_id": str, "doc_id": str},
             quoting=3,
+            na_filter=False,
         )
 
     @staticmethod
