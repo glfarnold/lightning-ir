@@ -8,8 +8,6 @@ import torch
 from transformers import BatchEncoding
 from transformers.activations import ACT2FN
 
-import numpy as np
-
 from ..base import LightningIRModel, LightningIROutput
 from ..base.model import _batch_encoding
 from . import BiEncoderConfig
@@ -90,14 +88,19 @@ class BiEncoderModel(LightningIRModel):
         self.projection: torch.nn.Linear | MLMHead | None = None
         if self.config.projection is not None:
             if "linear" in self.config.projection:
+                # NOTE only works if number of tokens per query and doc is the same
+                try:
+                    n = int(self.config.query_pooling_strategy.split("_")[1])
+                except:
+                    n = self.config.num_expansion_tokens
                 if self.config.query_num_subvectors > 0:
                     query_embedding_dim = self.config.embedding_dim * self.config.query_num_subvectors
                 else:
-                    query_embedding_dim = self.config.embedding_dim // self.config.num_expansion_tokens
+                    query_embedding_dim = self.config.embedding_dim // n
                 if self.config.doc_num_subvectors > 0:
                     doc_embedding_dim = self.config.embedding_dim * self.config.doc_num_subvectors
                 else:
-                    doc_embedding_dim = self.config.embedding_dim // self.config.num_expansion_tokens
+                    doc_embedding_dim = self.config.embedding_dim // n
                 self.query_projection = torch.nn.Linear(
                     self.config.hidden_size,
                     query_embedding_dim,
@@ -223,7 +226,7 @@ class BiEncoderModel(LightningIRModel):
         self,
         embeddings: torch.Tensor,
         attention_mask: torch.Tensor | None,
-        pooling_strategy: Literal["first", "mean", "max", "sum", "first_n"] | None,
+        pooling_strategy: Literal["first", "mean", "max", "sum"] | str | None,
     ) -> torch.Tensor:
         """Helper method to apply pooling to the embeddings.
 
@@ -237,8 +240,12 @@ class BiEncoderModel(LightningIRModel):
         :return: (Optionally) pooled embeddings
         :rtype: torch.Tensor
         """
-        if pooling_strategy == "first_n":
-            embeddings = embeddings[:, : self.config.num_expansion_tokens]
+        if pooling_strategy is not None and pooling_strategy.startswith("first_"):
+            try:
+                n = int(pooling_strategy.split("_")[1])
+            except:
+                n = self.config.num_expansion_tokens
+            embeddings = embeddings[:, :n]
             return embeddings
         return super()._pooling(embeddings=embeddings, attention_mask=attention_mask, pooling_strategy=pooling_strategy)
 
@@ -263,16 +270,19 @@ class BiEncoderModel(LightningIRModel):
         else:
             raise ValueError("Pass either input_ids or attention_mask")
         num_subvectors = getattr(self.config, f"{sequence_type}_num_subvectors")
-        if getattr(self.config, f"{sequence_type}_pooling_strategy") is not None:
+        pooling_strategy = getattr(self.config, f"{sequence_type}_pooling_strategy")
+        if pooling_strategy is not None:
+            try:
+                n = int(pooling_strategy.split("_")[1])
+            except:
+                n = self.config.num_expansion_tokens
             if num_subvectors > 0:
                 if self.config.num_expansion_tokens is None:
                     return torch.ones((shape[0], num_subvectors), dtype=torch.bool, device=device)
                 else:
-                    return torch.ones(
-                        (shape[0], num_subvectors * (self.config.num_expansion_tokens)), dtype=torch.bool, device=device
-                    )
+                    return torch.ones((shape[0], num_subvectors * n), dtype=torch.bool, device=device)
             else:
-                return torch.ones((shape[0], np.abs(num_subvectors)), dtype=torch.bool, device=device)
+                return torch.ones((shape[0], abs(num_subvectors)), dtype=torch.bool, device=device)
         scoring_mask = attention_mask
         if getattr(self.config, f"{sequence_type}_expansion") or scoring_mask is None:
             scoring_mask = torch.ones(shape, dtype=torch.bool, device=device)

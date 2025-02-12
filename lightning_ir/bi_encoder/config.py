@@ -38,6 +38,9 @@ class BiEncoderConfig(LightningIRConfig):
             "doc_embedding_dim",
             "embedding_dim",
             "projection",
+            "query_num_subvectors",
+            "doc_num_subvectors",
+            "num_expansion_tokens",
         }
     ).union(TOKENIZER_ARGS)
 
@@ -46,12 +49,12 @@ class BiEncoderConfig(LightningIRConfig):
         similarity_function: Literal["cosine", "dot"] = "dot",
         query_expansion: bool = False,
         attend_to_query_expanded_tokens: bool = False,
-        query_pooling_strategy: Literal["first", "mean", "max", "sum", "first_n"] | None = "mean",
+        query_pooling_strategy: Literal["first", "mean", "max", "sum"] | str | None = "mean",
         query_mask_scoring_tokens: Sequence[str] | Literal["punctuation"] | None = None,
         query_aggregation_function: Literal["sum", "mean", "max", "harmonic_mean"] = "sum",
         doc_expansion: bool = False,
         attend_to_doc_expanded_tokens: bool = False,
-        doc_pooling_strategy: Literal["first", "mean", "max", "sum", "first_n"] | None = "mean",
+        doc_pooling_strategy: Literal["first", "mean", "max", "sum"] | str | None = "mean",
         doc_mask_scoring_tokens: Sequence[str] | Literal["punctuation"] | None = None,
         normalize: bool = False,
         sparsification: Literal["relu", "relu_log"] | None = None,
@@ -78,7 +81,7 @@ class BiEncoderConfig(LightningIRConfig):
         :param query_mask_scoring_tokens: Whether and which query tokens to ignore during scoring, defaults to None
         :type query_mask_scoring_tokens: Sequence[str] | Literal['punctuation'] | None, optional
         :param query_aggregation_function: How to aggregate similarity scores over query tokens, defaults to "sum"
-        :type query_aggregation_function: Literal[ 'sum', 'mean', 'max', 'harmonic_mean' ], optional
+        :type query_aggregation_function: Literal[ 'sum', 'mean', 'max', 'harmonic_mean'], optional
         :param doc_expansion: Whether to expand documents with mask tokens, defaults to False
         :type doc_expansion: bool, optional
         :param attend_to_doc_expanded_tokens: Whether to allow document tokens to attend to mask tokens,
